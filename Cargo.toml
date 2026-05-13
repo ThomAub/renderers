@@ -3,6 +3,7 @@ resolver = "2"
 members = [
     "crates/renderers-core",
     "crates/renderers-py",
+    "crates/renderers-cli",
 ]
 
 [workspace.package]
