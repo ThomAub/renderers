@@ -8,7 +8,7 @@ rust-version.workspace = true
 description = "PyO3 bindings for renderers-core."
 
 [lib]
-name = "_native"
+name = "renderers_native"
 crate-type = ["cdylib", "rlib"]
 path = "src/lib.rs"
 

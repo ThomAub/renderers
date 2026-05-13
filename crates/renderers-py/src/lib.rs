@@ -63,7 +63,7 @@ fn parse_u32_list(obj: &Bound<'_, PyAny>) -> PyResult<Vec<u32>> {
     Ok(out)
 }
 
-#[pyclass(name = "RenderedTokens", module = "renderers._native")]
+#[pyclass(name = "RenderedTokens", module = "renderers_native")]
 #[derive(Clone)]
 struct PyRenderedTokens {
     inner: RenderedTokens,
@@ -107,7 +107,7 @@ impl PyRenderedTokens {
     }
 }
 
-#[pyclass(name = "ParsedToolCall", module = "renderers._native")]
+#[pyclass(name = "ParsedToolCall", module = "renderers_native")]
 #[derive(Clone)]
 struct PyParsedToolCall {
     inner: ParsedToolCall,
@@ -160,7 +160,7 @@ impl PyParsedToolCall {
     }
 }
 
-#[pyclass(name = "ParsedResponse", module = "renderers._native")]
+#[pyclass(name = "ParsedResponse", module = "renderers_native")]
 #[derive(Clone)]
 struct PyParsedResponse {
     inner: ParsedResponse,
@@ -200,7 +200,7 @@ impl PyParsedResponse {
 
 /// Wire enum mirror — matches the Python `ToolCallParseStatus` string
 /// values so existing code reading `tc.status == "ok"` keeps working.
-#[pyclass(name = "ToolCallParseStatus", module = "renderers._native")]
+#[pyclass(name = "ToolCallParseStatus", module = "renderers_native")]
 #[derive(Clone, Copy)]
 struct PyToolCallParseStatus {
     inner: ToolCallParseStatus,
@@ -226,7 +226,7 @@ impl PyToolCallParseStatus {
 }
 
 /// Polymorphic Python-facing renderer.
-#[pyclass(name = "Renderer", module = "renderers._native")]
+#[pyclass(name = "Renderer", module = "renderers_native")]
 struct PyRenderer {
     inner: Arc<dyn CoreRenderer>,
 }
@@ -344,7 +344,7 @@ impl PyRenderer {
 }
 
 #[pymodule]
-fn _native(py: Python<'_>, m: &Bound<'_, PyModule>) -> PyResult<()> {
+fn renderers_native(py: Python<'_>, m: &Bound<'_, PyModule>) -> PyResult<()> {
     let _ = py;
     m.add_class::<PyRenderer>()?;
     m.add_class::<PyRenderedTokens>()?;
