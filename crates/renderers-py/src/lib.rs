@@ -72,16 +72,16 @@ struct PyRenderedTokens {
 #[pymethods]
 impl PyRenderedTokens {
     #[getter]
-    fn token_ids<'py>(&self, py: Python<'py>) -> Bound<'py, PyList> {
+    fn token_ids<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyList>> {
         // Cast u32 -> i64 for Python `int` compatibility. PyList::new is
         // the fastest path; per-element extract is unavoidable until
         // numpy support is added.
-        PyList::new_bound(py, self.inner.token_ids.iter().map(|&t| t as i64))
+        PyList::new(py, self.inner.token_ids.iter().map(|&t| t as i64))
     }
 
     #[getter]
-    fn message_indices<'py>(&self, py: Python<'py>) -> Bound<'py, PyList> {
-        PyList::new_bound(py, self.inner.message_indices.iter().copied())
+    fn message_indices<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyList>> {
+        PyList::new(py, self.inner.message_indices.iter().copied())
     }
 
     #[getter]
@@ -131,7 +131,11 @@ impl PyParsedToolCall {
             None => Ok(py.None().into_bound(py)),
             Some(ToolArguments::Object(v)) => pythonize::pythonize(py, v)
                 .map_err(|e| invalid(format!("args serialisation: {e}"))),
-            Some(ToolArguments::Raw(s)) => Ok(s.clone().into_py(py).into_bound(py)),
+            Some(ToolArguments::Raw(s)) => Ok(s
+                .as_str()
+                .into_pyobject(py)
+                .map_err(|e| invalid(format!("string into pyobject: {e}")))?
+                .into_any()),
         }
     }
 
@@ -302,7 +306,7 @@ impl PyRenderer {
                 renderer.render_ids(&msgs, tools.as_deref(), add_generation_prompt)
             })
             .map_err(render_err)?;
-        Ok(PyList::new_bound(py, ids.iter().map(|&t| t as i64)))
+        PyList::new(py, ids.iter().map(|&t| t as i64))
     }
 
     fn parse_response(
@@ -316,8 +320,8 @@ impl PyRenderer {
         Ok(PyParsedResponse { inner: parsed })
     }
 
-    fn get_stop_token_ids<'py>(&self, py: Python<'py>) -> Bound<'py, PyList> {
-        PyList::new_bound(py, self.inner.stop_token_ids().iter().map(|&t| t as i64))
+    fn get_stop_token_ids<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyList>> {
+        PyList::new(py, self.inner.stop_token_ids().iter().map(|&t| t as i64))
     }
 
     #[pyo3(signature = (previous_prompt_ids, previous_completion_ids, new_messages, *, tools = None))]
