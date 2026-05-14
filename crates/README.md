@@ -40,6 +40,23 @@ RENDERERS_NATIVE=qwen3 pytest tests/test_render_ids.py
 RENDERERS_NATIVE=all   pytest tests/                       # everything ported
 ```
 
+## Parity testing
+
+Two complementary suites validate the port:
+
+1. **`tests/test_render_ids.py` (and siblings)** — Python (or, when the
+   env var routes, native) vs HuggingFace's `apply_chat_template`.
+   Catches drift from the upstream reference. Run under the native
+   path with `RENDERERS_NATIVE=qwen3 pytest tests/test_render_ids.py`.
+2. **`tests/test_native_parity.py`** — Python vs native, holding the
+   reference fixed. Catches drift between the two implementations even
+   if HuggingFace changes its template. Cheaper because the HF call
+   isn't on the path. Marker: `-m parity`.
+
+The parity suite skips cleanly when the tokenizer.json isn't on disk
+or the extension isn't built, so it's safe to import in CI without
+gating on either.
+
 Recognised values:
 
 | `RENDERERS_NATIVE` | Behaviour                                                |
