@@ -10,34 +10,80 @@
 //!    pytest harness does the actual diffing).
 //! 2. **Manual prototyping**: try out new families / config changes
 //!    without spinning up the PyO3 wheel.
-//!
-//! Usage:
-//!
-//! ```text
-//! renderers-cli render --family qwen3 --tokenizer tokenizer.json \
-//!     --messages conversation.json [--tools tools.json] [--gen-prompt]
-//!
-//! renderers-cli parse  --family qwen3 --tokenizer tokenizer.json \
-//!     --token-ids '[151644, 8948, ...]'
-//! ```
 
 use std::path::PathBuf;
 use std::process::ExitCode;
 
+use clap::{Parser, Subcommand, ValueEnum};
+use renderers_core::Renderer;
 use renderers_core::families::Qwen3Renderer;
 use renderers_core::tokenizer::Tokenizer;
 use renderers_core::types::{Message, ParsedToolCall, RenderedTokens, ToolArguments, ToolSpec};
-use renderers_core::Renderer;
 use serde::Serialize;
 
-fn print_usage() {
-    eprintln!(
-        "renderers-cli — render and parse via renderers-core\n\n\
-         USAGE:\n\
-           renderers-cli render --family qwen3 --tokenizer <path> --messages <path> [--tools <path>] [--gen-prompt]\n\
-           renderers-cli parse  --family qwen3 --tokenizer <path> --token-ids <json>\n\n\
-         Output is line-by-line JSON on stdout.\n"
-    );
+/// Render and parse messages via `renderers-core`. Output is line-by-line
+/// JSON on stdout for easy diffing.
+#[derive(Debug, Parser)]
+#[command(name = "renderers-cli", version, about, long_about = None)]
+struct Cli {
+    #[command(subcommand)]
+    command: Command,
+}
+
+#[derive(Debug, Subcommand)]
+enum Command {
+    /// Render a conversation to token ids + per-token message indices.
+    Render(RenderArgs),
+
+    /// Parse a completion's token ids into a structured response.
+    Parse(ParseArgs),
+}
+
+/// Renderer families wired through to `renderers-core`. New families
+/// land here as they're ported.
+#[derive(Debug, Clone, Copy, ValueEnum)]
+enum Family {
+    Qwen3,
+}
+
+#[derive(Debug, Parser)]
+struct RenderArgs {
+    /// Renderer family to instantiate.
+    #[arg(long, value_enum, default_value_t = Family::Qwen3)]
+    family: Family,
+
+    /// Path to a `tokenizer.json` file.
+    #[arg(long)]
+    tokenizer: PathBuf,
+
+    /// Path to a JSON file containing a list of messages.
+    #[arg(long)]
+    messages: PathBuf,
+
+    /// Path to a JSON file containing a list of tool specs.
+    #[arg(long)]
+    tools: Option<PathBuf>,
+
+    /// Emit a trailing generation prompt (`<|im_start|>assistant\n` for
+    /// Qwen3).
+    #[arg(long)]
+    gen_prompt: bool,
+}
+
+#[derive(Debug, Parser)]
+struct ParseArgs {
+    /// Renderer family to instantiate.
+    #[arg(long, value_enum, default_value_t = Family::Qwen3)]
+    family: Family,
+
+    /// Path to a `tokenizer.json` file.
+    #[arg(long)]
+    tokenizer: PathBuf,
+
+    /// JSON-encoded list of integer token ids
+    /// (e.g. `'[151644, 8948, 198, ...]'`).
+    #[arg(long)]
+    token_ids: String,
 }
 
 #[derive(Serialize)]
@@ -90,61 +136,11 @@ struct ParsedJson<'a> {
     tool_calls: Vec<ParsedToolCallJson<'a>>,
 }
 
-struct Args {
-    cmd: Cmd,
-    family: String,
-    tokenizer: PathBuf,
-    messages: Option<PathBuf>,
-    tools: Option<PathBuf>,
-    token_ids: Option<String>,
-    gen_prompt: bool,
-}
-
-enum Cmd {
-    Render,
-    Parse,
-}
-
-fn parse_args() -> Result<Args, String> {
-    let mut it = std::env::args().skip(1);
-    let cmd = match it.next().as_deref() {
-        Some("render") => Cmd::Render,
-        Some("parse") => Cmd::Parse,
-        Some(other) => return Err(format!("unknown command: {other}")),
-        None => return Err("missing command".to_string()),
-    };
-    let mut args = Args {
-        cmd,
-        family: "qwen3".to_string(),
-        tokenizer: PathBuf::new(),
-        messages: None,
-        tools: None,
-        token_ids: None,
-        gen_prompt: false,
-    };
-    while let Some(flag) = it.next() {
-        match flag.as_str() {
-            "--family" => args.family = it.next().ok_or("missing --family value")?,
-            "--tokenizer" => args.tokenizer = it.next().ok_or("missing --tokenizer value")?.into(),
-            "--messages" => args.messages = Some(it.next().ok_or("missing --messages value")?.into()),
-            "--tools" => args.tools = Some(it.next().ok_or("missing --tools value")?.into()),
-            "--token-ids" => args.token_ids = Some(it.next().ok_or("missing --token-ids value")?),
-            "--gen-prompt" => args.gen_prompt = true,
-            other => return Err(format!("unknown flag: {other}")),
-        }
-    }
-    Ok(args)
-}
-
-fn build_renderer(
-    family: &str,
-    tokenizer: Tokenizer,
-) -> Result<Box<dyn Renderer>, String> {
+fn build_renderer(family: Family, tokenizer: Tokenizer) -> Result<Box<dyn Renderer>, String> {
     match family {
-        "qwen3" => Qwen3Renderer::new(tokenizer)
+        Family::Qwen3 => Qwen3Renderer::new(tokenizer)
             .map(|r| Box::new(r) as Box<dyn Renderer>)
             .map_err(|e| e.to_string()),
-        other => Err(format!("unsupported family: {other}")),
     }
 }
 
@@ -171,52 +167,53 @@ fn parse_token_ids(s: &str) -> Result<Vec<u32>, String> {
         .collect()
 }
 
-fn run() -> Result<(), String> {
-    let args = parse_args()?;
+fn run_render(args: RenderArgs) -> Result<(), String> {
     let tok = Tokenizer::from_file(&args.tokenizer)
         .map_err(|e| format!("load tokenizer {:?}: {e}", args.tokenizer))?;
-    let renderer = build_renderer(&args.family, tok)?;
+    let renderer = build_renderer(args.family, tok)?;
+    let messages = load_messages(&args.messages)?;
+    let tools = match args.tools.as_ref() {
+        Some(p) => Some(load_tools(p)?),
+        None => None,
+    };
+    let rendered = renderer
+        .render(&messages, tools.as_deref(), args.gen_prompt)
+        .map_err(|e| e.to_string())?;
+    let json: RenderedJson = rendered.into();
+    println!("{}", serde_json::to_string(&json).unwrap());
+    Ok(())
+}
 
-    match args.cmd {
-        Cmd::Render => {
-            let messages = load_messages(
-                args.messages
-                    .as_ref()
-                    .ok_or("--messages required for render")?,
-            )?;
-            let tools = match args.tools.as_ref() {
-                Some(p) => Some(load_tools(p)?),
-                None => None,
-            };
-            let rendered = renderer
-                .render(&messages, tools.as_deref(), args.gen_prompt)
-                .map_err(|e| e.to_string())?;
-            let json: RenderedJson = rendered.into();
-            println!("{}", serde_json::to_string(&json).unwrap());
-        }
-        Cmd::Parse => {
-            let ids =
-                parse_token_ids(args.token_ids.as_ref().ok_or("--token-ids required for parse")?)?;
-            let parsed = renderer.parse_response(&ids);
-            let tool_calls: Vec<ParsedToolCallJson<'_>> =
-                parsed.tool_calls.iter().map(ParsedToolCallJson::from).collect();
-            let json = ParsedJson {
-                content: &parsed.content,
-                reasoning_content: parsed.reasoning_content.as_deref(),
-                tool_calls,
-            };
-            println!("{}", serde_json::to_string(&json).unwrap());
-        }
-    }
+fn run_parse(args: ParseArgs) -> Result<(), String> {
+    let tok = Tokenizer::from_file(&args.tokenizer)
+        .map_err(|e| format!("load tokenizer {:?}: {e}", args.tokenizer))?;
+    let renderer = build_renderer(args.family, tok)?;
+    let ids = parse_token_ids(&args.token_ids)?;
+    let parsed = renderer.parse_response(&ids);
+    let tool_calls: Vec<ParsedToolCallJson<'_>> = parsed
+        .tool_calls
+        .iter()
+        .map(ParsedToolCallJson::from)
+        .collect();
+    let json = ParsedJson {
+        content: &parsed.content,
+        reasoning_content: parsed.reasoning_content.as_deref(),
+        tool_calls,
+    };
+    println!("{}", serde_json::to_string(&json).unwrap());
     Ok(())
 }
 
 fn main() -> ExitCode {
-    match run() {
+    let cli = Cli::parse();
+    let result = match cli.command {
+        Command::Render(args) => run_render(args),
+        Command::Parse(args) => run_parse(args),
+    };
+    match result {
         Ok(()) => ExitCode::SUCCESS,
         Err(msg) => {
             eprintln!("error: {msg}");
-            print_usage();
             ExitCode::FAILURE
         }
     }

@@ -16,6 +16,7 @@ path = "src/main.rs"
 renderers-core = { path = "../renderers-core" }
 serde = { workspace = true }
 serde_json = { workspace = true }
+clap = { workspace = true }
 
 [dev-dependencies]
 criterion = { version = "0.5", features = ["html_reports"] }
