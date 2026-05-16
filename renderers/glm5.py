@@ -16,6 +16,11 @@ from typing import Any
 
 from transformers.tokenization_utils import PreTrainedTokenizer
 
+from renderers._native_router import (
+    load_native,
+    native_enabled,
+    resolve_tokenizer_path,
+)
 from renderers.base import (
     Message,
     ParsedResponse,
@@ -52,6 +57,31 @@ class GLM5Renderer:
     # instead of just emitting ``</think>`` as a separator. Subclassed in
     # GLM51Renderer; GLM-5 proper keeps this off.
     empty_think_on_last_assistant: bool = False
+
+    # Native-routing family key. Overridden in GLM51Renderer.
+    _NATIVE_KEY = "glm5"
+    _NATIVE_METHOD = "glm5"
+
+    def __new__(
+        cls,
+        tokenizer: PreTrainedTokenizer,
+        *,
+        enable_thinking: bool = True,
+        preserve_all_thinking: bool = False,
+        preserve_thinking_between_tool_calls: bool = False,
+    ):
+        if native_enabled(cls._NATIVE_KEY):
+            native = load_native()
+            if native is not None:
+                path = resolve_tokenizer_path(tokenizer)
+                builder = getattr(native.Renderer, cls._NATIVE_METHOD)
+                return builder(
+                    path,
+                    enable_thinking=enable_thinking,
+                    preserve_all_thinking=preserve_all_thinking,
+                    preserve_thinking_between_tool_calls=preserve_thinking_between_tool_calls,
+                )
+        return super().__new__(cls)
 
     def __init__(
         self,
@@ -429,6 +459,8 @@ class GLM51Renderer(GLM5Renderer):
     """
 
     empty_think_on_last_assistant = True
+    _NATIVE_KEY = "glm51"
+    _NATIVE_METHOD = "glm51"
 
     @staticmethod
     def _format_tool_spec(tool: ToolSpec) -> str:
