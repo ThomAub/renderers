@@ -40,6 +40,23 @@ RENDERERS_NATIVE=qwen3 pytest tests/test_render_ids.py
 RENDERERS_NATIVE=all   pytest tests/                       # everything ported
 ```
 
+## Multimodal — Phase 5 plan
+
+Three families need multimodal support: `Qwen3-VL`, `Qwen3.5` (vision
+variant), and `Kimi K2.5`. The Phase 5 work splits into two parts so
+the easy half ships first:
+
+| Sub-phase | Owns                                                                    | Status            |
+| --------- | ----------------------------------------------------------------------- | ----------------- |
+| 5a        | Placeholder accounting in Rust + Python-side HF vision processor        | Trait surface in  |
+| 5b        | Vision processor in Rust (`candle` or `ort`); drop the Python fallback  | Design pending    |
+
+The trait surface (`MultimodalRenderer`, `MediaBundle`, `MediaItem`,
+`MediaResolver`) is already exposed in `renderers-core` so the Phase 5a
+diff stays additive on a frozen API. The renderer never touches raw
+pixel data — the caller passes `MediaItem`s with `num_tokens`
+pre-computed by whatever vision processor it ran.
+
 ## Parity testing
 
 Two complementary suites validate the port:
@@ -82,8 +99,8 @@ shim logs a one-shot info message and falls back to Python.
 | Kimi K2.5    | planned (Phase 4 — text; multimodal Phase 5)    |
 | MiniMax M2   | planned (Phase 4)                                |
 | Qwen3.6      | planned (Phase 4)                                |
-| Qwen3-VL     | planned (Phase 5 — multimodal incl. processor) |
-| Qwen3.5 mm   | planned (Phase 5)                                |
+| Qwen3-VL     | trait scaffolding ready · impl Phase 5a · processor Phase 5b |
+| Qwen3.5 mm   | trait scaffolding ready · impl Phase 5a · processor Phase 5b |
 | GPT-OSS      | planned (Phase 6 — via `openai-harmony` crate)  |
 | Default      | planned (Phase 7 — via `minijinja`)             |
 

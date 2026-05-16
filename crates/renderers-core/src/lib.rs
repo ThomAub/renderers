@@ -35,9 +35,9 @@ pub mod tokenizer;
 pub mod traits;
 pub mod types;
 
-pub use traits::{MultimodalRenderer, Renderer};
+pub use traits::{MediaResolver, MediaSource, MultimodalRenderer, Renderer};
 pub use types::{
-    Content, ContentPart, ImageRef, Message, MultiModalData, ParsedResponse, ParsedToolCall,
-    PlaceholderRange, RenderError, RenderedTokens, ToolArguments, ToolCall, ToolCallFunction,
-    ToolCallParseStatus, ToolSpec, VideoRef, SCAFFOLD_IDX,
+    Content, ContentPart, ImageRef, MediaBundle, MediaItem, Message, Modality, MultiModalData,
+    ParsedResponse, ParsedToolCall, PlaceholderRange, RenderError, RenderedTokens, ToolArguments,
+    ToolCall, ToolCallFunction, ToolCallParseStatus, ToolSpec, VideoRef, SCAFFOLD_IDX,
 };
