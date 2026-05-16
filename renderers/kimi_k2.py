@@ -18,6 +18,11 @@ import json
 
 from transformers.tokenization_utils import PreTrainedTokenizer
 
+from renderers._native_router import (
+    load_native,
+    native_enabled,
+    resolve_tokenizer_path,
+)
 from renderers.base import (
     Message,
     ParsedResponse,
@@ -33,6 +38,26 @@ _DEFAULT_SYSTEM = "You are Kimi, an AI assistant created by Moonshot AI."
 
 class KimiK2Renderer:
     """Deterministic message → token renderer for Kimi K2 models."""
+
+    def __new__(
+        cls,
+        tokenizer: PreTrainedTokenizer,
+        *,
+        enable_thinking: bool = True,
+        preserve_all_thinking: bool = False,
+        preserve_thinking_between_tool_calls: bool = False,
+    ):
+        if native_enabled("kimi_k2") or native_enabled("kimi-k2"):
+            native = load_native()
+            if native is not None:
+                path = resolve_tokenizer_path(tokenizer)
+                return native.Renderer.kimi_k2(
+                    path,
+                    enable_thinking=enable_thinking,
+                    preserve_all_thinking=preserve_all_thinking,
+                    preserve_thinking_between_tool_calls=preserve_thinking_between_tool_calls,
+                )
+        return super().__new__(cls)
 
     def __init__(
         self,
