@@ -6,13 +6,13 @@
 //!   Role "assistant" is rendered as "ai".
 //! - System block always present — default system message
 //!   ("You are a helpful assistant. Your name is MiniMax-M2.5 and is
-//!    built by MiniMax.") auto-injected if missing.
+//!   built by MiniMax.") auto-injected if missing.
 //! - Tools, when supplied, are appended to the system message as
 //!   `<tool>{json}</tool>` lines inside a `<tools>...</tools>` block,
 //!   followed by a verbose instructions block.
 //! - Tool calls use XML wrapper + nested invokes:
-//!     `<minimax:tool_call><invoke name="fn"><parameter name="k">v</parameter>...
-//!     </invoke></minimax:tool_call>`
+//!   `<minimax:tool_call><invoke name="fn"><parameter name="k">v</parameter>...
+//!   </invoke></minimax:tool_call>`
 //! - Tool responses wrapped in literal `<response>...</response>`
 //!   (plain text, no special token).
 //! - Thinking emitted only for assistants after the last user turn

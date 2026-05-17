@@ -215,7 +215,7 @@ impl Nemotron3Renderer {
         handled: &[&str],
     ) {
         for (k, v) in obj {
-            if handled.iter().any(|h| *h == k.as_str()) {
+            if handled.contains(&k.as_str()) {
                 continue;
             }
             out.push_str("\n<");

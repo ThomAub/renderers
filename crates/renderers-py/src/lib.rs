@@ -9,9 +9,10 @@
 
 use std::sync::Arc;
 
+use numpy::{IntoPyArray, PyArray2};
 use pyo3::exceptions::{PyRuntimeError, PyValueError};
 use pyo3::prelude::*;
-use pyo3::types::{PyList, PyType};
+use pyo3::types::{PyDict, PyList, PyType};
 
 use renderers_core::families::{
     DefaultRendererBuilder, DeepSeekV3RendererBuilder, GlmRendererBuilder, GptOssRendererBuilder,
@@ -319,6 +320,38 @@ impl PyRenderer {
         Ok(PyRenderer {
             inner: Arc::new(renderer),
         })
+    }
+
+    /// Build a Qwen3-VL renderer — alias for [`Renderer.qwen35`].
+    ///
+    /// Qwen3-VL and Qwen3.5-VL share the same chat template and the
+    /// same set of special tokens, so the renderer implementation is
+    /// identical. The factory is exposed separately so callers reading
+    /// from a registry can spell the family name directly.
+    #[classmethod]
+    #[pyo3(signature = (
+        tokenizer_path,
+        *,
+        enable_thinking = true,
+        preserve_all_thinking = false,
+        preserve_thinking_between_tool_calls = false,
+    ))]
+    fn qwen3_vl(
+        _cls: &Bound<'_, PyType>,
+        py: Python<'_>,
+        tokenizer_path: &str,
+        enable_thinking: bool,
+        preserve_all_thinking: bool,
+        preserve_thinking_between_tool_calls: bool,
+    ) -> PyResult<Self> {
+        Self::qwen35(
+            _cls,
+            py,
+            tokenizer_path,
+            enable_thinking,
+            preserve_all_thinking,
+            preserve_thinking_between_tool_calls,
+        )
     }
 
     /// Build a Qwen3.5 renderer (text-only path) from a tokenizer.json.
@@ -958,28 +991,30 @@ fn processed_to_pyobject<'py>(
     py: Python<'py>,
     p: ProcessedImage,
 ) -> PyResult<Bound<'py, PyAny>> {
-    // Serialise via serde_json::Value first, then convert to a Python
-    // dict. The shape is identical to what the HF processor produces
-    // (lists of f32 + integer dims), so downstream glue can route it
-    // unchanged.
-    let shape = p.pixel_values.shape().to_vec();
-    let value = serde_json::json!({
-        "modality":    "image",
-        "num_tokens":  p.num_tokens,
-        "hash":        p.hash,
-        "hf_payload":  {
-            "pixel_values": {
-                "shape": [shape[0] as u64, shape[1] as u64],
-                "data":  p.pixel_values.iter().copied().collect::<Vec<f32>>(),
-            },
-            "image_grid_thw": {
-                "shape": [1u32, 3u32],
-                "data":  p.image_grid_thw.to_vec(),
-            },
-        },
-    });
-    pythonize::pythonize(py, &value)
-        .map_err(|e| invalid(format!("processed image → py: {e}")))
+    // Zero-copy: hand numpy the Vec<f32> directly. The numpy array
+    // takes ownership of the buffer, so this avoids the per-element
+    // PyFloat allocation that the previous nested-list path triggered.
+    // Shape: (num_tokens × merge², 3 × temporal × patch²).
+    let shape = (p.pixel_values.shape()[0], p.pixel_values.shape()[1]);
+    let pixel_array: Bound<'py, PyArray2<f32>> = p.pixel_values.into_pyarray(py);
+    let grid_array: Bound<'py, PyArray2<i64>> = ndarray::Array2::from_shape_vec(
+        (1, 3),
+        p.image_grid_thw.iter().map(|&v| v as i64).collect(),
+    )
+    .expect("image_grid_thw is always shape [1,3]")
+    .into_pyarray(py);
+
+    let hf_payload = PyDict::new(py);
+    hf_payload.set_item("pixel_values", pixel_array)?;
+    hf_payload.set_item("image_grid_thw", grid_array)?;
+
+    let out = PyDict::new(py);
+    out.set_item("modality", "image")?;
+    out.set_item("num_tokens", p.num_tokens)?;
+    out.set_item("hash", p.hash)?;
+    out.set_item("hf_payload", hf_payload)?;
+    let _ = shape; // shape captured in the numpy array's own metadata
+    Ok(out.into_any())
 }
 
 #[pymodule]

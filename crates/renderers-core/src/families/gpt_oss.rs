@@ -153,8 +153,8 @@ impl GptOssRenderer {
             if ids.len() != 1 {
                 return Err(RenderError::MissingSpecialToken(s.to_string()));
             }
-            u32::try_from(ids[0])
-                .map_err(|_| RenderError::MissingSpecialToken(s.to_string()))
+            // `Rank` in tiktoken is `u32`; no conversion needed.
+            Ok(ids[0])
         };
         let start = resolve("<|start|>")?;
         let end = resolve("<|end|>")?;
@@ -203,7 +203,7 @@ impl GptOssRenderer {
             .map_err(harmony_err)?;
         let len = out.len();
         tokens.append(&mut out);
-        indices.extend(std::iter::repeat(msg_idx).take(len));
+        indices.extend(std::iter::repeat_n(msg_idx, len));
         Ok(())
     }
 
@@ -211,12 +211,8 @@ impl GptOssRenderer {
     /// Helper so the call sites don't need to name CoreBPE (which is not
     /// re-exported from the harmony crate).
     fn encode_text(&self, text: &str) -> Vec<u32> {
-        self.enc
-            .tokenizer()
-            .encode_with_special_tokens(text)
-            .iter()
-            .map(|&r| r as u32)
-            .collect()
+        // `Rank` is `u32`; encode_with_special_tokens already returns Vec<u32>.
+        self.enc.tokenizer().encode_with_special_tokens(text)
     }
 
     /// Decode a slice of token ids via the harmony tokenizer.
@@ -566,8 +562,7 @@ impl Renderer for GptOssRenderer {
                 .map(|s| s.split(|c: char| c.is_whitespace() || c == '<').next().unwrap_or(""));
 
             if let Some(r) = recipient {
-                if r.starts_with("functions.") {
-                    let tool_name = &r["functions.".len()..];
+                if let Some(tool_name) = r.strip_prefix("functions.") {
                     let block_end = if body_closed { body_end + 1 } else { body_end };
                     let span = block_start..block_end;
                     match serde_json::from_str::<serde_json::Value>(&body_text) {
@@ -597,9 +592,12 @@ impl Renderer for GptOssRenderer {
                 }
             }
 
+            // analysis → reasoning_content; everything else (final,
+            // commentary without a tool recipient, missing channel)
+            // collapses into the visible content stream.
             match channel.split_whitespace().next() {
                 Some("analysis") => reasoning_parts.push(body_text),
-                Some("final") | _ => content_parts.push(body_text),
+                _ => content_parts.push(body_text),
             }
 
             i = if body_closed { body_end + 1 } else { body_end };

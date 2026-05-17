@@ -490,6 +490,7 @@ impl GlmRenderer {
         }
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn emit_assistant_glm5_family(
         &self,
         buf: &mut RenderBuf<'_>,
@@ -541,6 +542,7 @@ impl GlmRenderer {
         Ok(())
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn emit_assistant_glm45(
         &self,
         buf: &mut RenderBuf<'_>,

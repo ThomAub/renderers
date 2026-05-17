@@ -277,15 +277,23 @@ impl Renderer for KimiK2Renderer {
         }
 
         // Map normalised index → caller's index (sentinel for injected).
-        let orig_idx = |i: usize| -> i32 {
-            if injected[i] {
-                SCAFFOLD_IDX
-            } else {
-                let real: usize =
-                    injected[..=i].iter().filter(|&&inj| !inj).count() - 1;
-                real as i32
+        // Precompute as a flat Vec so the lookup is O(1) instead of an
+        // O(i) filter inside the render loop — saves an O(n²) walk on
+        // long conversations.
+        let orig_idx_table: Vec<i32> = {
+            let mut table = Vec::with_capacity(working.len());
+            let mut real: i32 = -1;
+            for &inj in &injected {
+                if inj {
+                    table.push(SCAFFOLD_IDX);
+                } else {
+                    real += 1;
+                    table.push(real);
+                }
             }
+            table
         };
+        let orig_idx = |i: usize| -> i32 { orig_idx_table[i] };
 
         // Index of the auto-injected system message (if any) — emits a
         // trailing literal "\n" after its <|im_end|>.
